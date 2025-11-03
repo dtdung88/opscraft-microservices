@@ -1,0 +1,39 @@
+groups:
+  - name: opscraft_alerts
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job=~".*-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes."
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} error rate is {{ $value }} errors/sec"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 90%"
+
+      - alert: DatabaseConnectionPoolExhausted
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.9
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database connection pool almost exhausted"
+          description: "PostgreSQL connection usage is above 90%"

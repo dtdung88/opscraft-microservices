@@ -1,0 +1,61 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: "opscraft"
+    environment: "production"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: "auth-service"
+    static_configs:
+      - targets: ["auth-service:8001"]
+    metrics_path: "/metrics"
+
+  - job_name: "script-service"
+    static_configs:
+      - targets: ["script-service:8002"]
+    metrics_path: "/metrics"
+
+  - job_name: "execution-service"
+    static_configs:
+      - targets: ["execution-service:8003"]
+    metrics_path: "/metrics"
+
+  - job_name: "secret-service"
+    static_configs:
+      - targets: ["secret-service:8004"]
+    metrics_path: "/metrics"
+
+  - job_name: "notification-service"
+    static_configs:
+      - targets: ["notification-service:8005"]
+    metrics_path: "/metrics"
+
+  - job_name: "admin-service"
+    static_configs:
+      - targets: ["admin-service:8006"]
+    metrics_path: "/metrics"
+
+  - job_name: "api-gateway"
+    static_configs:
+      - targets: ["api-gateway:8000"]
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
