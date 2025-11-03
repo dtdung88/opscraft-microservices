@@ -35,3 +35,7 @@ class TokenValidation(BaseModel):
     user_id: Optional[int] = None
     username: Optional[str] = None
     role: Optional[str] = None
+
+class PasswordChangeRequest(BaseModel):
+    old_password: str
+    new_password: str
