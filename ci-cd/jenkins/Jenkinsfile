@@ -1,0 +1,137 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_REGISTRY = 'ghcr.io'
+        DOCKER_CREDENTIALS_ID = 'github-token'
+        KUBE_CONFIG_ID = 'kubeconfig'
+        SLACK_CHANNEL = '#deployments'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Detect Changes') {
+            steps {
+                script {
+                    def changes = sh(
+                        script: 'git diff --name-only HEAD~1',
+                        returnStdout: true
+                    ).trim().split('\n')
+                    
+                    env.BUILD_AUTH = changes.any { it.startsWith('services/auth-service/') }
+                    env.BUILD_SCRIPT = changes.any { it.startsWith('services/script-service/') }
+                    env.BUILD_EXECUTION = changes.any { it.startsWith('services/execution-service/') }
+                    env.BUILD_SECRET = changes.any { it.startsWith('services/secret-service/') }
+                    env.BUILD_NOTIFICATION = changes.any { it.startsWith('services/notification-service/') }
+                    env.BUILD_ADMIN = changes.any { it.startsWith('services/admin-service/') }
+                    env.BUILD_FRONTEND = changes.any { it.startsWith('frontend/') }
+                }
+            }
+        }
+        
+        stage('Test Services') {
+            parallel {
+                stage('Test Auth') {
+                    when {
+                        expression { env.BUILD_AUTH == 'true' }
+                    }
+                    steps {
+                        dir('services/auth-service') {
+                            sh 'docker-compose -f docker-compose.test.yml up --abort-on-container-exit'
+                        }
+                    }
+                }
+                
+                stage('Test Script') {
+                    when {
+                        expression { env.BUILD_SCRIPT == 'true' }
+                    }
+                    steps {
+                        dir('services/script-service') {
+                            sh 'docker-compose -f docker-compose.test.yml up --abort-on-container-exit'
+                        }
+                    }
+                }
+                
+                // Additional test stages for other services...
+            }
+        }
+        
+        stage('Build & Push Images') {
+            parallel {
+                stage('Build Auth') {
+                    when {
+                        expression { env.BUILD_AUTH == 'true' }
+                    }
+                    steps {
+                        script {
+                            docker.withRegistry("https://${DOCKER_REGISTRY}", DOCKER_CREDENTIALS_ID) {
+                                def image = docker.build(
+                                    "${DOCKER_REGISTRY}/opscraft/auth-service:${BUILD_NUMBER}",
+                                    "./services/auth-service"
+                                )
+                                image.push()
+                                image.push('latest')
+                            }
+                        }
+                    }
+                }
+                
+                // Additional build stages for other services...
+            }
+        }
+        
+        stage('Deploy to K8s') {
+            steps {
+                script {
+                    withKubeConfig([credentialsId: KUBE_CONFIG_ID]) {
+                        if (env.BUILD_AUTH == 'true') {
+                            sh """
+                                kubectl set image deployment/auth-service \
+                                  auth-service=${DOCKER_REGISTRY}/opscraft/auth-service:${BUILD_NUMBER} \
+                                  -n opscraft
+                                kubectl rollout status deployment/auth-service -n opscraft --timeout=5m
+                            """
+                        }
+                        
+                        // Deploy other services...
+                    }
+                }
+            }
+        }
+        
+        stage('Integration Tests') {
+            steps {
+                sh 'pytest tests/integration/ -v'
+            }
+        }
+        
+        stage('Smoke Tests') {
+            steps {
+                sh './scripts/smoke-tests.sh'
+            }
+        }
+    }
+    
+    post {
+        success {
+            slackSend(
+                channel: SLACK_CHANNEL,
+                color: 'good',
+                message: "✅ Pipeline succeeded: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            )
+        }
+        failure {
+            slackSend(
+                channel: SLACK_CHANNEL,
+                color: 'danger',
+                message: "❌ Pipeline failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            )
+        }
+    }
+}
