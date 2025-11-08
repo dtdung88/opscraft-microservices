@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
+from pydantic import ConfigDict
 
 class SecretCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -27,8 +28,7 @@ class SecretResponse(BaseModel):
     is_active: bool
     last_accessed_at: Optional[datetime]
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AuditLogResponse(BaseModel):
     id: int
@@ -39,5 +39,4 @@ class AuditLogResponse(BaseModel):
     timestamp: datetime
     details: Optional[str]
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

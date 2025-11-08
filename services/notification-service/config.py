@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import Optional
 
 class Settings(BaseSettings):
     SERVICE_NAME: str = "notification-service"
@@ -11,7 +11,19 @@ class Settings(BaseSettings):
     
     AUTH_SERVICE_URL: str = "http://auth-service:8001"
     
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    # Email configuration
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAIL_FROM: Optional[str] = None
+    
+    # Slack configuration
+    SLACK_WEBHOOK_URL: Optional[str] = None
+    SLACK_BOT_TOKEN: Optional[str] = None
+    
+    # Teams configuration
+    TEAMS_WEBHOOK_URL: Optional[str] = None
     
     class Config:
         env_file = ".env"

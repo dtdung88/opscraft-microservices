@@ -1,6 +1,3 @@
-# docker-compose.yml - Development Environment
-version: "3.9"
-
 networks:
   opscraft-network:
     driver: bridge
@@ -10,19 +7,15 @@ volumes:
   postgres-script:
   postgres-execution:
   postgres-secret:
+  postgres-scheduler:
+  postgres-approval:
+  postgres-audit:
   redis-data:
   kafka-data:
   zookeeper-data:
-  prometheus-data:
-  grafana-data:
-  elasticsearch-data:
 
 services:
-  # ============================================================================
-  # Infrastructure Services
-  # ============================================================================
-
-  # PostgreSQL Databases (one per service)
+  # Infrastructure
   auth-db:
     image: postgres:15-alpine
     container_name: auth-db
@@ -32,7 +25,6 @@ services:
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-auth:/var/lib/postgresql/data
-      - ./infrastructure/databases/auth-db/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - opscraft-network
     healthcheck:
@@ -92,7 +84,57 @@ services:
       timeout: 5s
       retries: 5
 
-  # Redis - Shared cache
+  scheduler-db:
+    image: postgres:15-alpine
+    container_name: scheduler-db
+    environment:
+      POSTGRES_DB: scheduler_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-scheduler:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  approval-db:
+    image: postgres:15-alpine
+    container_name: approval-db
+    environment:
+      POSTGRES_DB: approval_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-approval:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  audit-db:
+    image: postgres:15-alpine
+    container_name: audit-db
+    environment:
+      POSTGRES_DB: audit_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-audit:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     container_name: opscraft-redis
@@ -106,7 +148,6 @@ services:
       timeout: 5s
       retries: 5
 
-  # Zookeeper for Kafka
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -118,7 +159,6 @@ services:
     networks:
       - opscraft-network
 
-  # Kafka - Event streaming
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
@@ -146,32 +186,15 @@ services:
       timeout: 10s
       retries: 5
 
-  # Consul - Service discovery
-  consul:
-    image: consul:1.16
-    container_name: consul
-    command: agent -server -ui -bootstrap-expect=1 -client=0.0.0.0
-    ports:
-      - "8500:8500"
-    networks:
-      - opscraft-network
-
-  # ============================================================================
-  # Microservices
-  # ============================================================================
-
-  # Auth Service
+  # Core Services
   auth-service:
-    build:
-      context: ./services/auth-service
-      dockerfile: Dockerfile
+    build: ./services/auth-service
     container_name: auth-service
     environment:
       DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db
       REDIS_URL: redis://redis:6379/0
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-min-32-chars}
-      CORS_ORIGINS: '["http://localhost:3000"]'
+      SECRET_KEY: ${SECRET_KEY}
     ports:
       - "8001:8001"
     depends_on:
@@ -183,16 +206,10 @@ services:
         condition: service_healthy
     networks:
       - opscraft-network
-    volumes:
-      - ./services/auth-service:/app
-      - ./shared:/app/shared
     restart: unless-stopped
 
-  # Script Service
   script-service:
-    build:
-      context: ./services/script-service
-      dockerfile: Dockerfile
+    build: ./services/script-service
     container_name: script-service
     environment:
       DATABASE_URL: postgresql://postgres:postgres@script-db:5432/script_db
@@ -204,87 +221,72 @@ services:
     depends_on:
       script-db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
       auth-service:
         condition: service_started
     networks:
       - opscraft-network
-    volumes:
-      - ./services/script-service:/app
-      - ./shared:/app/shared
     restart: unless-stopped
 
-  # Execution Service
   execution-service:
-    build:
-      context: ./services/execution-service
-      dockerfile: Dockerfile
+    build: ./services/execution-service
     container_name: execution-service
     environment:
       DATABASE_URL: postgresql://postgres:postgres@execution-db:5432/execution_db
       REDIS_URL: redis://redis:6379/2
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      AUTH_SERVICE_URL: http://auth-service:8001
-      SCRIPT_SERVICE_URL: http://script-service:8002
-      SECRET_SERVICE_URL: http://secret-service:8004
+      CELERY_BROKER_URL: redis://redis:6379/5
+      CELERY_RESULT_BACKEND: redis://redis:6379/5
     ports:
       - "8003:8003"
     depends_on:
       execution-db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
     networks:
       - opscraft-network
     volumes:
-      - ./services/execution-service:/app
-      - ./shared:/app/shared
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
-  # Secret Service
+  execution-worker:
+    build: ./services/execution-service
+    container_name: execution-worker
+    command: celery -A app.workers.celery_worker:celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@execution-db:5432/execution_db
+      REDIS_URL: redis://redis:6379/2
+      CELERY_BROKER_URL: redis://redis:6379/5
+    depends_on:
+      - redis
+      - execution-db
+    networks:
+      - opscraft-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
   secret-service:
-    build:
-      context: ./services/secret-service
-      dockerfile: Dockerfile
+    build: ./services/secret-service
     container_name: secret-service
     environment:
       DATABASE_URL: postgresql://postgres:postgres@secret-db:5432/secret_db
       REDIS_URL: redis://redis:6379/3
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      AUTH_SERVICE_URL: http://auth-service:8001
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your-encryption-key-32-chars}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     ports:
       - "8004:8004"
     depends_on:
       secret-db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
     networks:
       - opscraft-network
-    volumes:
-      - ./services/secret-service:/app
-      - ./shared:/app/shared
     restart: unless-stopped
 
-  # Notification Service (WebSockets)
   notification-service:
-    build:
-      context: ./services/notification-service
-      dockerfile: Dockerfile
+    build: ./services/notification-service
     container_name: notification-service
     environment:
       REDIS_URL: redis://redis:6379/4
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      AUTH_SERVICE_URL: http://auth-service:8001
     ports:
       - "8005:8005"
     depends_on:
@@ -294,16 +296,10 @@ services:
         condition: service_healthy
     networks:
       - opscraft-network
-    volumes:
-      - ./services/notification-service:/app
-      - ./shared:/app/shared
     restart: unless-stopped
 
-  # Admin Service
   admin-service:
-    build:
-      context: ./services/admin-service
-      dockerfile: Dockerfile
+    build: ./services/admin-service
     container_name: admin-service
     environment:
       AUTH_SERVICE_URL: http://auth-service:8001
@@ -314,51 +310,87 @@ services:
       - "8006:8006"
     depends_on:
       - auth-service
-      - script-service
-      - execution-service
-      - secret-service
     networks:
       - opscraft-network
-    volumes:
-      - ./services/admin-service:/app
-      - ./shared:/app/shared
     restart: unless-stopped
 
-  # Celery Worker (for Execution Service)
-  execution-worker:
-    build:
-      context: ./services/execution-service
-      dockerfile: Dockerfile
-    container_name: execution-worker
-    command: celery -A app.workers.celery_worker:celery_app worker --loglevel=info
+  # Advanced Services
+  scheduler-service:
+    build: ./services/scheduler-service
+    container_name: scheduler-service
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@execution-db:5432/execution_db
-      REDIS_URL: redis://redis:6379/2
+      DATABASE_URL: postgresql://postgres:postgres@scheduler-db:5432/scheduler_db
+      REDIS_URL: redis://redis:6379/6
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      EXECUTION_SERVICE_URL: http://execution-service:8003
+    ports:
+      - "8007:8007"
     depends_on:
-      execution-db:
-        condition: service_healthy
-      redis:
+      scheduler-db:
         condition: service_healthy
     networks:
       - opscraft-network
-    volumes:
-      - ./services/execution-service:/app
-      - ./shared:/app/shared
-      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
-  # ============================================================================
-  # API Gateway
-  # ============================================================================
+  approval-service:
+    build: ./services/approval-service
+    container_name: approval-service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@approval-db:5432/approval_db
+      REDIS_URL: redis://redis:6379/7
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8008:8008"
+    depends_on:
+      approval-db:
+        condition: service_healthy
+    networks:
+      - opscraft-network
+    restart: unless-stopped
 
+  audit-service:
+    build: ./services/audit-service
+    container_name: audit-service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@audit-db:5432/audit_db
+      REDIS_URL: redis://redis:6379/8
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "8009:8009"
+    depends_on:
+      audit-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - opscraft-network
+    restart: unless-stopped
+
+  backup-service:
+    build: ./services/backup-service
+    container_name: backup-service
+    environment:
+      AUTH_DB_URL: postgresql://postgres:postgres@auth-db:5432/auth_db
+      SCRIPT_DB_URL: postgresql://postgres:postgres@script-db:5432/script_db
+      EXECUTION_DB_URL: postgresql://postgres:postgres@execution-db:5432/execution_db
+      SECRET_DB_URL: postgresql://postgres:postgres@secret-db:5432/secret_db
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    ports:
+      - "8010:8010"
+    networks:
+      - opscraft-network
+    restart: unless-stopped
+
+  # API Gateway
   api-gateway:
     image: nginx:alpine
     container_name: api-gateway
     ports:
       - "8000:80"
     volumes:
-      - ./services/api-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/proxy_params:/etc/nginx/proxy_params:ro
     depends_on:
       - auth-service
       - script-service
@@ -366,18 +398,16 @@ services:
       - secret-service
       - notification-service
       - admin-service
+      - scheduler-service
+      - approval-service
+      - audit-service
     networks:
       - opscraft-network
     restart: unless-stopped
 
-  # ============================================================================
   # Frontend
-  # ============================================================================
-
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    build: ./frontend
     container_name: opscraft-frontend
     environment:
       REACT_APP_API_URL: http://localhost:8000/api/v1
@@ -389,100 +419,3 @@ services:
     networks:
       - opscraft-network
     restart: unless-stopped
-
-  # ============================================================================
-  # Monitoring & Observability
-  # ============================================================================
-
-  # Prometheus
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-    volumes:
-      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - opscraft-network
-
-  # Grafana
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: grafana-piechart-panel
-    volumes:
-      - ./infrastructure/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./infrastructure/monitoring/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
-      - grafana-data:/var/lib/grafana
-    ports:
-      - "3001:3000"
-    depends_on:
-      - prometheus
-    networks:
-      - opscraft-network
-
-  # Jaeger - Distributed tracing
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: jaeger
-    environment:
-      COLLECTOR_ZIPKIN_HOST_PORT: ":9411"
-    ports:
-      - "5775:5775/udp"
-      - "6831:6831/udp"
-      - "6832:6832/udp"
-      - "5778:5778"
-      - "16686:16686"
-      - "14268:14268"
-      - "14250:14250"
-      - "9411:9411"
-    networks:
-      - opscraft-network
-
-  # Elasticsearch
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-      - xpack.security.enabled=false
-    volumes:
-      - elasticsearch-data:/usr/share/elasticsearch/data
-    ports:
-      - "9200:9200"
-    networks:
-      - opscraft-network
-
-  # Logstash
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.11.0
-    container_name: logstash
-    volumes:
-      - ./infrastructure/monitoring/elk/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
-    ports:
-      - "5000:5000"
-    depends_on:
-      - elasticsearch
-    networks:
-      - opscraft-network
-
-  # Kibana
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.0
-    container_name: kibana
-    environment:
-      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
-    ports:
-      - "5601:5601"
-    depends_on:
-      - elasticsearch
-    networks:
-      - opscraft-network

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from pydantic import ConfigDict
 
 class ScriptBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
@@ -31,5 +32,4 @@ class ScriptResponse(ScriptBase):
     created_by: str
     updated_by: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
