@@ -16,7 +16,7 @@ class AuditEventConsumer:
         self.running = False
     
     async def start(self):
-        \"\"\"Start consuming events from Kafka\"\"\"
+        """Start consuming events from Kafka"""
         self.running = True
         
         try:
@@ -45,7 +45,7 @@ class AuditEventConsumer:
             logger.error(f"Audit consumer error: {e}")
     
     async def _process_event(self, event: dict):
-        \"\"\"Process and store audit event\"\"\"
+        """Process and store audit event"""
         db = SessionLocal()
         
         try:
@@ -90,7 +90,7 @@ class AuditEventConsumer:
             db.close()
     
     def _get_category(self, event_type: str) -> str:
-        \"\"\"Determine event category\"\"\"
+        """Determine event category"""
         if not event_type:
             return 'unknown'
         
@@ -108,7 +108,7 @@ class AuditEventConsumer:
             return 'system'
     
     def _calculate_risk_level(self, event: dict) -> str:
-        \"\"\"Calculate risk level for event\"\"\"
+        """Calculate risk level for event"""
         event_type = event.get('event_type', '')
         action = event.get('action', '')
         status = event.get('status', 'success')
@@ -132,7 +132,7 @@ class AuditEventConsumer:
         return 'low'
     
     async def stop(self):
-        \"\"\"Stop consumer\"\"\"
+        """Stop consumer"""
         self.running = False
         if self.consumer:
             self.consumer.close()

@@ -150,6 +150,6 @@ async def trigger_schedule_now(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    \"\"\"Manually trigger a schedule execution\"\"\"
+    """Manually trigger a schedule execution"""
     await execute_scheduled_script(schedule_id)
     return {"message": "Schedule triggered successfully"}

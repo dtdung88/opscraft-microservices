@@ -24,7 +24,7 @@ class BackupManager:
         self.bucket_name = os.getenv('BACKUP_BUCKET', 'opscraft-backups')
     
     async def backup_database(self, db_name: str, db_host: str, db_user: str, db_password: str):
-        \"\"\"Backup PostgreSQL database\"\"\"
+        """Backup PostgreSQL database"""
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_file = f"/tmp/{db_name}_backup_{timestamp}.sql"
         
@@ -68,7 +68,7 @@ class BackupManager:
             return {"status": "failed", "error": str(e)}
     
     async def backup_scripts(self):
-        \"\"\"Backup all scripts from Script Service\"\"\"
+        """Backup all scripts from Script Service"""
         import httpx
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -108,7 +108,7 @@ class BackupManager:
             return {"status": "failed", "error": str(e)}
     
     async def cleanup_old_backups(self, prefix: str, days: int):
-        \"\"\"Delete backups older than specified days\"\"\"
+        """Delete backups older than specified days"""
         cutoff_date = datetime.now() - timedelta(days=days)
         
         try:
@@ -130,7 +130,7 @@ class BackupManager:
             logger.error(f"Cleanup failed: {e}")
     
     async def restore_database(self, backup_file: str, db_name: str):
-        \"\"\"Restore database from backup\"\"\"
+        """Restore database from backup"""
         try:
             # Download from S3
             local_file = f"/tmp/restore_{db_name}.sql"
