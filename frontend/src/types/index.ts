@@ -6,6 +6,7 @@ export interface User {
     role: 'admin' | 'operator' | 'viewer'
     is_active: boolean
     created_at: string
+    updated_at?: string
 }
 
 export interface LoginCredentials {
@@ -35,7 +36,7 @@ export interface Script {
     description: string | null
     script_type: ScriptType
     content: string
-    parameters: Record<string, any> | null
+    parameters: Record<string, unknown> | null
     status: ScriptStatus
     version: string
     tags: string[] | null
@@ -50,15 +51,16 @@ export interface CreateScriptData {
     description?: string
     script_type: ScriptType
     content: string
-    parameters?: Record<string, any>
+    parameters?: Record<string, unknown>
     tags?: string[]
+    version?: string
 }
 
 export interface UpdateScriptData {
     name?: string
     description?: string
     content?: string
-    parameters?: Record<string, any>
+    parameters?: Record<string, unknown>
     status?: ScriptStatus
     tags?: string[]
     version?: string
@@ -70,7 +72,7 @@ export interface Execution {
     id: number
     script_id: number
     status: ExecutionStatus
-    parameters: Record<string, any> | null
+    parameters: Record<string, unknown> | null
     output: string | null
     error: string | null
     started_at: string
@@ -81,7 +83,7 @@ export interface Execution {
 
 export interface CreateExecutionData {
     script_id: number
-    parameters?: Record<string, any>
+    parameters?: Record<string, unknown>
 }
 
 export interface Secret {
@@ -89,7 +91,7 @@ export interface Secret {
     name: string
     description: string | null
     category: string | null
-    value?: string // Only included when reveal=true
+    value?: string
     created_at: string
     updated_at: string
     created_by: string
@@ -122,8 +124,13 @@ export interface AuditLog {
     details: string | null
 }
 
+export interface ServiceStatus {
+    status: string
+    version?: string
+}
+
 export interface SystemStats {
-    services: Record<string, any>
+    services: Record<string, ServiceStatus>
     summary: {
         total_users: number
         total_scripts: number
@@ -133,5 +140,5 @@ export interface SystemStats {
 }
 
 export interface ApiError {
-    detail: string | Record<string, any>
+    detail: string | Record<string, unknown>
 }

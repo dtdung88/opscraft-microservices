@@ -1,4 +1,4 @@
-import axios, { AxiosError } from 'axios'
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import type {
     User,
     LoginCredentials,
@@ -26,7 +26,7 @@ const api = axios.create({
 })
 
 // Request interceptor to add auth token
-api.interceptors.request.use((config) => {
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token')
     if (token) {
         config.headers.Authorization = `Bearer ${token}`
@@ -39,7 +39,6 @@ api.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
         if (error.response?.status === 401) {
-            // Token expired, try to refresh
             const refreshToken = localStorage.getItem('refresh_token')
             if (refreshToken) {
                 try {
@@ -50,13 +49,11 @@ api.interceptors.response.use(
                     localStorage.setItem('access_token', data.access_token)
                     localStorage.setItem('refresh_token', data.refresh_token)
 
-                    // Retry original request
                     if (error.config) {
                         error.config.headers.Authorization = `Bearer ${data.access_token}`
                         return axios.request(error.config)
                     }
                 } catch {
-                    // Refresh failed, logout
                     localStorage.removeItem('access_token')
                     localStorage.removeItem('refresh_token')
                     window.location.href = '/login'
@@ -69,124 +66,148 @@ api.interceptors.response.use(
 
 // Auth API
 export const authApi = {
-    login: async (credentials: LoginCredentials) => {
+    login: async (credentials: LoginCredentials): Promise<TokenResponse> => {
         const { data } = await api.post<TokenResponse>('/auth/login', credentials)
         return data
     },
 
-    register: async (userData: RegisterData) => {
+    register: async (userData: RegisterData): Promise<User> => {
         const { data } = await api.post<User>('/auth/register', userData)
         return data
     },
 
-    getCurrentUser: async () => {
+    getCurrentUser: async (): Promise<User> => {
         const { data } = await api.get<User>('/auth/me')
         return data
     },
 
-    logout: () => {
+    logout: (): void => {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
     },
 }
 
 // Scripts API
+interface ScriptListParams {
+    skip?: number
+    limit?: number
+    search?: string
+    script_type?: string
+    status?: string
+}
+
 export const scriptsApi = {
-    list: async (params?: { skip?: number; limit?: number; search?: string; script_type?: string; status?: string }) => {
+    list: async (params?: ScriptListParams): Promise<Script[]> => {
         const { data } = await api.get<Script[]>('/scripts', { params })
         return data
     },
 
-    get: async (id: number) => {
+    get: async (id: number): Promise<Script> => {
         const { data } = await api.get<Script>(`/scripts/${id}`)
         return data
     },
 
-    create: async (scriptData: CreateScriptData) => {
+    create: async (scriptData: CreateScriptData): Promise<Script> => {
         const { data } = await api.post<Script>('/scripts', scriptData)
         return data
     },
 
-    update: async (id: number, scriptData: UpdateScriptData) => {
+    update: async (id: number, scriptData: UpdateScriptData): Promise<Script> => {
         const { data } = await api.put<Script>(`/scripts/${id}`, scriptData)
         return data
     },
 
-    delete: async (id: number) => {
+    delete: async (id: number): Promise<void> => {
         await api.delete(`/scripts/${id}`)
     },
 }
 
 // Executions API
+interface ExecutionListParams {
+    skip?: number
+    limit?: number
+    status?: string
+}
+
 export const executionsApi = {
-    list: async (params?: { skip?: number; limit?: number; status?: string }) => {
+    list: async (params?: ExecutionListParams): Promise<Execution[]> => {
         const { data } = await api.get<Execution[]>('/executions', { params })
         return data
     },
 
-    get: async (id: number) => {
+    get: async (id: number): Promise<Execution> => {
         const { data } = await api.get<Execution>(`/executions/${id}`)
         return data
     },
 
-    create: async (executionData: CreateExecutionData) => {
+    create: async (executionData: CreateExecutionData): Promise<Execution> => {
         const { data } = await api.post<Execution>('/executions', executionData)
         return data
     },
 
-    cancel: async (id: number) => {
+    cancel: async (id: number): Promise<void> => {
         await api.post(`/executions/${id}/cancel`)
     },
 }
 
 // Secrets API
+interface SecretListParams {
+    skip?: number
+    limit?: number
+}
+
 export const secretsApi = {
-    list: async (params?: { skip?: number; limit?: number }) => {
+    list: async (params?: SecretListParams): Promise<Secret[]> => {
         const { data } = await api.get<Secret[]>('/secrets', { params })
         return data
     },
 
-    get: async (id: number, reveal: boolean = false) => {
+    get: async (id: number, reveal: boolean = false): Promise<Secret> => {
         const { data } = await api.get<Secret>(`/secrets/${id}`, {
             params: { reveal },
         })
         return data
     },
 
-    create: async (secretData: CreateSecretData) => {
+    create: async (secretData: CreateSecretData): Promise<Secret> => {
         const { data } = await api.post<Secret>('/secrets', secretData)
         return data
     },
 
-    update: async (id: number, secretData: UpdateSecretData) => {
+    update: async (id: number, secretData: UpdateSecretData): Promise<Secret> => {
         const { data } = await api.put<Secret>(`/secrets/${id}`, secretData)
         return data
     },
 
-    delete: async (id: number) => {
+    delete: async (id: number): Promise<void> => {
         await api.delete(`/secrets/${id}`)
     },
 
-    getAuditLogs: async (id: number) => {
+    getAuditLogs: async (id: number): Promise<AuditLog[]> => {
         const { data } = await api.get<AuditLog[]>(`/secrets/${id}/audit`)
         return data
     },
 }
 
 // Admin API
+interface UpdateRoleResponse {
+    message: string
+    user: User
+}
+
 export const adminApi = {
-    getStats: async () => {
+    getStats: async (): Promise<SystemStats> => {
         const { data } = await api.get<SystemStats>('/admin/stats')
         return data
     },
 
-    getUsers: async () => {
+    getUsers: async (): Promise<User[]> => {
         const { data } = await api.get<User[]>('/admin/users')
         return data
     },
 
-    updateUserRole: async (userId: number, role: string) => {
-        const { data } = await api.post(`/admin/users/${userId}/role`, { role })
+    updateUserRole: async (userId: number, role: string): Promise<UpdateRoleResponse> => {
+        const { data } = await api.post<UpdateRoleResponse>(`/admin/users/${userId}/role`, { role })
         return data
     },
 }

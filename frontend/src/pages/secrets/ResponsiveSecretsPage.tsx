@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { secretsApi } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-import type { Secret } from '@/types'
+import type { Secret, CreateSecretData } from '@/types'
 
 export default function ResponsiveSecretsPage() {
     const queryClient = useQueryClient()
@@ -27,15 +27,32 @@ export default function ResponsiveSecretsPage() {
         queryFn: () => secretsApi.list(),
     })
 
+    const createMutation = useMutation({
+        mutationFn: (data: CreateSecretData) => secretsApi.create(data),
+        onSuccess: () => {
+            toast.success('Secret created successfully!')
+            queryClient.invalidateQueries({ queryKey: ['secrets'] })
+            setShowCreateModal(false)
+        },
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to create secret')
+        },
+    })
+
     const deleteMutation = useMutation({
         mutationFn: (id: number) => secretsApi.delete(id),
         onSuccess: () => {
             toast.success('Secret deleted successfully!')
             queryClient.invalidateQueries({ queryKey: ['secrets'] })
         },
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to delete secret')
+        },
     })
 
-    const handleRevealToggle = async (secret: Secret) => {
+    const handleRevealToggle = (secret: Secret) => {
         const newRevealed = new Set(revealedSecrets)
         if (newRevealed.has(secret.id)) {
             newRevealed.delete(secret.id)
@@ -193,7 +210,7 @@ export default function ResponsiveSecretsPage() {
 
                                         <button
                                             onClick={() => {
-                                                if (confirm(`Delete secret "${secret.name}"?`)) {
+                                                if (window.confirm(`Delete secret "${secret.name}"?`)) {
                                                     deleteMutation.mutate(secret.id)
                                                 }
                                             }}
@@ -209,6 +226,114 @@ export default function ResponsiveSecretsPage() {
                     })}
                 </div>
             )}
+
+            {/* Create Secret Modal */}
+            {showCreateModal && (
+                <CreateSecretModal
+                    onClose={() => setShowCreateModal(false)}
+                    onSubmit={(data) => createMutation.mutate(data)}
+                    isLoading={createMutation.isPending}
+                />
+            )}
+        </div>
+    )
+}
+
+function CreateSecretModal({
+    onClose,
+    onSubmit,
+    isLoading,
+}: {
+    onClose: () => void
+    onSubmit: (data: CreateSecretData) => void
+    isLoading: boolean
+}) {
+    const [formData, setFormData] = useState<CreateSecretData>({
+        name: '',
+        value: '',
+        description: '',
+        category: 'api_key',
+    })
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        onSubmit(formData)
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
+                <div className="p-6 border-b border-gray-200">
+                    <h2 className="text-2xl font-bold text-gray-900">Create New Secret</h2>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Secret Name *
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.name}
+                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className="input"
+                            placeholder="e.g., AWS_ACCESS_KEY"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Secret Value *
+                        </label>
+                        <textarea
+                            value={formData.value}
+                            onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                            rows={3}
+                            className="input font-mono"
+                            placeholder="Enter secret value..."
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                        <select
+                            value={formData.category}
+                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                            className="input"
+                        >
+                            <option value="api_key">API Key</option>
+                            <option value="password">Password</option>
+                            <option value="token">Token</option>
+                            <option value="certificate">Certificate</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Description
+                        </label>
+                        <textarea
+                            value={formData.description}
+                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            rows={2}
+                            className="input"
+                            placeholder="Optional description..."
+                        />
+                    </div>
+
+                    <div className="flex justify-end space-x-3 pt-4">
+                        <button type="button" onClick={onClose} className="btn-secondary">
+                            Cancel
+                        </button>
+                        <button type="submit" disabled={isLoading} className="btn-primary">
+                            {isLoading ? 'Creating...' : 'Create Secret'}
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     )
 }

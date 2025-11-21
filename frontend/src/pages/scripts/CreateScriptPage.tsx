@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -71,7 +71,7 @@ terraform {
 
 export default function CreateScriptPage() {
     const navigate = useNavigate()
-    const [content, setContent] = useState('')
+    const [content, setContent] = useState(scriptTemplates.bash)
     const [tags, setTags] = useState<string[]>([])
     const [tagInput, setTagInput] = useState('')
 
@@ -92,20 +92,30 @@ export default function CreateScriptPage() {
 
     const scriptType = watch('script_type')
 
+    // Update content when script type changes
+    useEffect(() => {
+        setValue('content', content)
+    }, [content, setValue])
+
     const createMutation = useMutation({
         mutationFn: (data: CreateScriptData) => scriptsApi.create(data),
         onSuccess: (data) => {
             toast.success('Script created successfully!')
             navigate(`/scripts/${data.id}`)
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to create script')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to create script')
         },
     })
 
     const handleScriptTypeChange = (type: ScriptType) => {
         setValue('script_type', type)
-        if (!content || content === scriptTemplates[scriptType]) {
+        const currentContent = content
+        const previousTemplate = scriptTemplates[scriptType]
+
+        // Only change content if it matches the previous template
+        if (!currentContent || currentContent === previousTemplate) {
             setContent(scriptTemplates[type])
             setValue('content', scriptTemplates[type])
         }
@@ -120,6 +130,13 @@ export default function CreateScriptPage() {
 
     const handleRemoveTag = (tag: string) => {
         setTags(tags.filter((t) => t !== tag))
+    }
+
+    const handleKeyPress = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault()
+            handleAddTag()
+        }
     }
 
     const onSubmit = (data: ScriptFormData) => {
@@ -213,7 +230,7 @@ export default function CreateScriptPage() {
                                 type="text"
                                 value={tagInput}
                                 onChange={(e) => setTagInput(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                                onKeyPress={handleKeyPress}
                                 className="input flex-1"
                                 placeholder="Add tags (press Enter)"
                             />

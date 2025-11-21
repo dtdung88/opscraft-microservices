@@ -7,14 +7,13 @@ import {
     Eye,
     EyeOff,
     Trash2,
-    Edit,
     History,
     Copy,
     CheckCircle,
 } from 'lucide-react'
 import { secretsApi } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-import type { CreateSecretData, Secret } from '@/types'
+import type { CreateSecretData, Secret, AuditLog } from '@/types'
 
 export default function SecretsPage() {
     const queryClient = useQueryClient()
@@ -36,8 +35,9 @@ export default function SecretsPage() {
             queryClient.invalidateQueries({ queryKey: ['secrets'] })
             setShowCreateModal(false)
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to create secret')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to create secret')
         },
     })
 
@@ -47,8 +47,9 @@ export default function SecretsPage() {
             toast.success('Secret deleted successfully!')
             queryClient.invalidateQueries({ queryKey: ['secrets'] })
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to delete secret')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to delete secret')
         },
     })
 
@@ -256,7 +257,6 @@ export default function SecretsPage() {
     )
 }
 
-// Create Secret Modal Component
 function CreateSecretModal({
     onClose,
     onSubmit,
@@ -356,14 +356,13 @@ function CreateSecretModal({
     )
 }
 
-// Audit Log Modal Component
 function AuditLogModal({
     secret,
     logs,
     onClose,
 }: {
     secret: Secret
-    logs: any[]
+    logs: AuditLog[]
     onClose: () => void
 }) {
     return (

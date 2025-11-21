@@ -13,7 +13,7 @@ interface AuthState {
     setUser: (user: User | null) => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
     user: null,
     isAuthenticated: !!localStorage.getItem('access_token'),
     isLoading: false,
@@ -38,7 +38,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         try {
             await authApi.register(userData)
             // After registration, automatically log in
-            await useAuthStore.getState().login({
+            await get().login({
                 username: userData.username,
                 password: userData.password,
             })

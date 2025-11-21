@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
 
-export function useWebSocket(channel: string) {
-    const [messages, setMessages] = useState<any[]>([])
+interface UseWebSocketReturn<T> {
+    messages: T[]
+    isConnected: boolean
+    sendMessage: (message: T) => void
+    clearMessages: () => void
+}
+
+export function useWebSocket<T = unknown>(channel: string): UseWebSocketReturn<T> {
+    const [messages, setMessages] = useState<T[]>([])
     const [isConnected, setIsConnected] = useState(false)
     const wsRef = useRef<WebSocket | null>(null)
 
@@ -16,8 +23,12 @@ export function useWebSocket(channel: string) {
         }
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data)
-            setMessages((prev) => [...prev, data])
+            try {
+                const data = JSON.parse(event.data) as T
+                setMessages((prev) => [...prev, data])
+            } catch (error) {
+                console.error('Failed to parse WebSocket message:', error)
+            }
         }
 
         ws.onerror = (error) => {
@@ -36,15 +47,15 @@ export function useWebSocket(channel: string) {
         }
     }, [channel])
 
-    const sendMessage = (message: any) => {
+    const sendMessage = useCallback((message: T) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify(message))
         }
-    }
+    }, [])
 
-    const clearMessages = () => {
+    const clearMessages = useCallback(() => {
         setMessages([])
-    }
+    }, [])
 
     return { messages, isConnected, sendMessage, clearMessages }
 }

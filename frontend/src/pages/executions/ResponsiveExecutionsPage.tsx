@@ -6,7 +6,7 @@ import { executionsApi } from '@/lib/api'
 import { formatDate, formatRelativeTime, getStatusColor } from '@/lib/utils'
 import type { ExecutionStatus } from '@/types'
 
-const statusIcons = {
+const statusIcons: Record<ExecutionStatus, typeof Clock> = {
     pending: Clock,
     running: Loader2,
     success: CheckCircle,
@@ -154,7 +154,7 @@ export default function ResponsiveExecutionsPage() {
                                 <Link
                                     key={execution.id}
                                     to={`/executions/${execution.id}`}
-                                    className="card hover:shadow-lg transition-shadow"
+                                    className="card hover:shadow-lg transition-shadow block"
                                 >
                                     <div className="flex items-start justify-between mb-3">
                                         <div className="flex items-center space-x-2">

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import { User, Mail, Calendar, Shield, Key, Save } from 'lucide-react'
 import { authApi } from '@/lib/api'
@@ -8,8 +8,7 @@ import { formatDate } from '@/lib/utils'
 import api from '@/lib/api'
 
 export default function ProfilePage() {
-    const queryClient = useQueryClient()
-    const { user, setUser } = useAuthStore()
+    const { user } = useAuthStore()
     const [isChangingPassword, setIsChangingPassword] = useState(false)
     const [passwordData, setPasswordData] = useState({
         old_password: '',
@@ -36,8 +35,9 @@ export default function ProfilePage() {
                 confirm_password: '',
             })
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to change password')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to change password')
         },
     })
 

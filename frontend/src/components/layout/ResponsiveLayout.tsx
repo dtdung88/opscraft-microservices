@@ -2,7 +2,6 @@ import { Outlet } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import ResponsiveSidebar from './ResponsiveSidebar'
 import ResponsiveHeader from './ResponsiveHeader'
-import { Menu, X } from 'lucide-react'
 
 export default function ResponsiveLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(false)

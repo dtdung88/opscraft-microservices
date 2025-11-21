@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { adminApi } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
-import type { User } from '@/types'
+import type { User, ServiceStatus } from '@/types'
 
 export default function AdminPage() {
     const queryClient = useQueryClient()
@@ -40,8 +40,9 @@ export default function AdminPage() {
             setShowRoleModal(false)
             setSelectedUser(null)
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to update user role')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to update user role')
         },
     })
 
@@ -117,8 +118,9 @@ export default function AdminPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {Object.entries(serviceStatus).map(([service, data]: [string, any]) => {
-                        const isHealthy = data.status === 'healthy' || data.status !== 'unavailable'
+                    {Object.entries(serviceStatus).map(([service, data]) => {
+                        const serviceData = data as ServiceStatus
+                        const isHealthy = serviceData.status === 'healthy' || serviceData.status !== 'unavailable'
 
                         return (
                             <div
@@ -140,10 +142,10 @@ export default function AdminPage() {
                                     className={`text-sm ${isHealthy ? 'text-green-700' : 'text-red-700'
                                         }`}
                                 >
-                                    {data.status || 'Unknown'}
+                                    {serviceData.status || 'Unknown'}
                                 </p>
-                                {data.version && (
-                                    <p className="text-xs text-gray-600 mt-1">Version: {data.version}</p>
+                                {serviceData.version && (
+                                    <p className="text-xs text-gray-600 mt-1">Version: {serviceData.version}</p>
                                 )}
                             </div>
                         )
@@ -318,7 +320,6 @@ export default function AdminPage() {
     )
 }
 
-// Role Change Modal Component
 function RoleChangeModal({
     user,
     onClose,
@@ -359,7 +360,7 @@ function RoleChangeModal({
                                     name="role"
                                     value="viewer"
                                     checked={selectedRole === 'viewer'}
-                                    onChange={(e) => setSelectedRole(e.target.value)}
+                                    onChange={(e) => setSelectedRole(e.target.value as User['role'])}
                                     className="mr-3"
                                 />
                                 <div>
@@ -374,7 +375,7 @@ function RoleChangeModal({
                                     name="role"
                                     value="operator"
                                     checked={selectedRole === 'operator'}
-                                    onChange={(e) => setSelectedRole(e.target.value)}
+                                    onChange={(e) => setSelectedRole(e.target.value as User['role'])}
                                     className="mr-3"
                                 />
                                 <div>
@@ -391,7 +392,7 @@ function RoleChangeModal({
                                     name="role"
                                     value="admin"
                                     checked={selectedRole === 'admin'}
-                                    onChange={(e) => setSelectedRole(e.target.value)}
+                                    onChange={(e) => setSelectedRole(e.target.value as User['role'])}
                                     className="mr-3"
                                 />
                                 <div>

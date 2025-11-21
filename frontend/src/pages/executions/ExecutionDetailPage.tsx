@@ -9,12 +9,17 @@ import {
     CheckCircle,
     Clock,
     AlertCircle,
-    RefreshCw,
     Terminal,
 } from 'lucide-react'
 import { executionsApi, scriptsApi } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { formatDate, getStatusColor } from '@/lib/utils'
+import type { Execution, ExecutionStatus } from '@/types'
+
+interface WebSocketMessage {
+    output?: string
+    log?: string
+}
 
 export default function ExecutionDetailPage() {
     const { id } = useParams<{ id: string }>()
@@ -27,8 +32,10 @@ export default function ExecutionDetailPage() {
         queryKey: ['execution', id],
         queryFn: () => executionsApi.get(Number(id)),
         enabled: !!id,
-        refetchInterval: (data) =>
-            data?.status === 'running' || data?.status === 'pending' ? 2000 : false,
+        refetchInterval: (query) => {
+            const data = query.state.data as Execution | undefined
+            return data?.status === 'running' || data?.status === 'pending' ? 2000 : false
+        },
     })
 
     const { data: script } = useQuery({
@@ -46,8 +53,9 @@ export default function ExecutionDetailPage() {
             queryClient.invalidateQueries({ queryKey: ['execution', id] })
             queryClient.invalidateQueries({ queryKey: ['executions'] })
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to cancel execution')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to cancel execution')
         },
     })
 
@@ -73,7 +81,7 @@ export default function ExecutionDetailPage() {
         )
     }
 
-    const statusIcons = {
+    const statusIcons: Record<ExecutionStatus, typeof Clock> = {
         pending: Clock,
         running: Play,
         success: CheckCircle,
@@ -212,7 +220,7 @@ export default function ExecutionDetailPage() {
                         <div className="whitespace-pre-wrap">{execution.output}</div>
                     )}
 
-                    {messages.map((msg, idx) => (
+                    {(messages as WebSocketMessage[]).map((msg, idx) => (
                         <div key={idx} className="whitespace-pre-wrap">
                             {msg.output || msg.log || JSON.stringify(msg)}
                         </div>

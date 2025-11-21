@@ -1,6 +1,8 @@
+type AnyFunction = (...args: unknown[]) => unknown
+
 export const performanceUtils = {
     // Lazy load images
-    lazyLoadImage(imgElement: HTMLImageElement) {
+    lazyLoadImage(imgElement: HTMLImageElement): void {
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting) {
@@ -15,18 +17,18 @@ export const performanceUtils = {
     },
 
     // Debounce scroll events
-    debounceScroll(callback: Function, delay: number = 150) {
-        let timeoutId: NodeJS.Timeout
+    debounceScroll(callback: AnyFunction, delay: number = 150): () => void {
+        let timeoutId: ReturnType<typeof setTimeout>
         return () => {
             clearTimeout(timeoutId)
-            timeoutId = setTimeout(callback, delay)
+            timeoutId = setTimeout(() => callback(), delay)
         }
     },
 
     // Throttle for continuous events
-    throttle(callback: Function, limit: number = 100) {
+    throttle<T extends unknown[]>(callback: (...args: T) => void, limit: number = 100): (...args: T) => void {
         let waiting = false
-        return (...args: any[]) => {
+        return (...args: T) => {
             if (!waiting) {
                 callback(...args)
                 waiting = true
@@ -38,13 +40,13 @@ export const performanceUtils = {
     },
 
     // Preload critical resources
-    preloadImage(src: string) {
+    preloadImage(src: string): void {
         const img = new Image()
         img.src = src
     },
 
     // Check if in viewport
-    isInViewport(element: HTMLElement) {
+    isInViewport(element: HTMLElement): boolean {
         const rect = element.getBoundingClientRect()
         return (
             rect.top >= 0 &&

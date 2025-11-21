@@ -32,8 +32,9 @@ export default function LoginPage() {
             await login(data)
             toast.success('Welcome back!')
             navigate('/')
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || 'Login failed')
+        } catch (error: unknown) {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Login failed')
         } finally {
             setIsLoading(false)
         }
@@ -99,7 +100,7 @@ export default function LoginPage() {
 
                     <div className="mt-6 text-center">
                         <p className="text-sm text-gray-600">
-                            Don't have an account?{' '}
+                            Don&apos;t have an account?{' '}
                             <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">
                                 Sign up
                             </Link>

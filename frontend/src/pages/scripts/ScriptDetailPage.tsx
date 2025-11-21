@@ -42,8 +42,9 @@ export default function ScriptDetailPage() {
             queryClient.invalidateQueries({ queryKey: ['scripts'] })
             setIsEditing(false)
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to update script')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to update script')
         },
     })
 
@@ -53,8 +54,9 @@ export default function ScriptDetailPage() {
             toast.success('Script deleted successfully!')
             navigate('/scripts')
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to delete script')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to delete script')
         },
     })
 
@@ -64,8 +66,9 @@ export default function ScriptDetailPage() {
             toast.success('Execution started!')
             navigate(`/executions/${data.id}`)
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || 'Failed to start execution')
+        onError: (error: unknown) => {
+            const err = error as { response?: { data?: { detail?: string } } }
+            toast.error(err.response?.data?.detail || 'Failed to start execution')
         },
     })
 

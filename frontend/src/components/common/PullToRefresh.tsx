@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface PullToRefreshProps {
     onRefresh: () => Promise<void>
@@ -14,13 +15,13 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
 
     const threshold = 80
 
-    const handleTouchStart = (e: TouchEvent) => {
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
         if (window.scrollY === 0) {
             setStartY(e.touches[0].clientY)
         }
-    }
+    }, [])
 
-    const handleTouchMove = (e: TouchEvent) => {
+    const handleTouchMove = useCallback((e: React.TouchEvent) => {
         if (startY === 0 || window.scrollY > 0) return
 
         const currentY = e.touches[0].clientY
@@ -29,9 +30,9 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
         if (distance > 0 && distance < 150) {
             setPullDistance(distance)
         }
-    }
+    }, [startY])
 
-    const handleTouchEnd = async () => {
+    const handleTouchEnd = useCallback(async () => {
         if (pullDistance > threshold && !isRefreshing) {
             setIsRefreshing(true)
             try {
@@ -42,25 +43,16 @@ export default function PullToRefresh({ onRefresh, children }: PullToRefreshProp
         }
         setPullDistance(0)
         setStartY(0)
-    }
-
-    useEffect(() => {
-        const container = containerRef.current
-        if (!container) return
-
-        container.addEventListener('touchstart', handleTouchStart, { passive: true })
-        container.addEventListener('touchmove', handleTouchMove, { passive: true })
-        container.addEventListener('touchend', handleTouchEnd)
-
-        return () => {
-            container.removeEventListener('touchstart', handleTouchStart)
-            container.removeEventListener('touchmove', handleTouchMove)
-            container.removeEventListener('touchend', handleTouchEnd)
-        }
-    }, [startY, pullDistance, isRefreshing])
+    }, [pullDistance, isRefreshing, onRefresh, threshold])
 
     return (
-        <div ref={containerRef} className="relative">
+        <div
+            ref={containerRef}
+            className="relative"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+        >
             {/* Pull indicator */}
             {(pullDistance > 0 || isRefreshing) && (
                 <div
