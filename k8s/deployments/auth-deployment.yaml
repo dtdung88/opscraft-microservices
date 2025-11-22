@@ -17,6 +17,10 @@ spec:
         app: auth-service
         tier: backend
     spec:
+      securityContext:
+        runAsNonRoot: true # Pod-level: all containers must run as non-root
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: auth-service
           image: opscraft/auth-service:latest
@@ -24,6 +28,13 @@ spec:
           ports:
             - containerPort: 8001
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: SERVICE_NAME
               valueFrom:

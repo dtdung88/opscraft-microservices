@@ -9,7 +9,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-async def verify_admin(request: Request):
+def verify_admin(request: Request):
     user = request.state.user
     if user.get('role') != 'admin':
         raise HTTPException(

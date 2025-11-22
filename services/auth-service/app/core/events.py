@@ -11,7 +11,7 @@ class EventPublisher:
     
     async def connect(self):
         try:
-            self.producer = KafkaProducer(
+            self.producer = await KafkaProducer(
                 bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8'),
                 acks='all',
@@ -29,14 +29,14 @@ class EventPublisher:
         try:
             event_dict = event.dict() if hasattr(event, 'dict') else event
             self.producer.send(topic, value=event_dict)
-            self.producer.flush()
+            await self.producer.flush()
             logger.info(f"Published event to {topic}: {event_dict}")
         except Exception as e:
             logger.error(f"Failed to publish event: {e}")
     
     async def disconnect(self):
         if self.producer:
-            self.producer.close()
+            await self.producer.close()
             logger.info("Disconnected from Kafka")
 
 event_publisher = EventPublisher()

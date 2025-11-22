@@ -32,7 +32,7 @@ class BackupManager:
 
     async def backup_database(self, db_name: str, db_host: str, db_user: str, db_password: str):
         """Backup PostgreSQL database"""
-        self._init_s3()
+        await self._init_s3()
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         backup_file = f"/tmp/{db_name}_backup_{timestamp}.sql"
 
@@ -52,7 +52,7 @@ class BackupManager:
             subprocess.run(cmd, env=env, check=True)
 
             s3_key = f"databases/{db_name}/{timestamp}/{db_name}.sql"
-            self.s3_client.upload_file(backup_file, self.bucket_name, s3_key)
+            await self.s3_client.upload_file(backup_file, self.bucket_name, s3_key)
 
             logger.info(f"Database backup completed: {s3_key}")
             os.remove(backup_file)
@@ -68,7 +68,7 @@ class BackupManager:
     async def backup_scripts(self):
         """Backup all scripts from Script Service"""
         import httpx
-        self._init_s3()
+        await self._init_s3()
 
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -107,7 +107,7 @@ class BackupManager:
         cutoff_date = datetime.now() - timedelta(days=days)
 
         try:
-            response = self.s3_client.list_objects_v2(
+            response = await self.s3_client.list_objects_v2(
                 Bucket=self.bucket_name,
                 Prefix=prefix
             )
@@ -126,10 +126,10 @@ class BackupManager:
 
     async def restore_database(self, backup_file: str, db_name: str):
         """Restore database from backup"""
-        self._init_s3()
+        await self._init_s3()
         try:
             local_file = f"/tmp/restore_{db_name}.sql"
-            self.s3_client.download_file(self.bucket_name, backup_file, local_file)
+            await self.s3_client.download_file(self.bucket_name, backup_file, local_file)
 
             cmd = [
                 'pg_restore',

@@ -19,7 +19,7 @@ class OptimizedConnectionManager:
 
     async def start(self):
         """Start background broadcast worker"""
-        self._broadcast_task = asyncio.create_task(self._broadcast_worker())
+        self._broadcast_task = await asyncio.create_task(self._broadcast_worker())
 
     async def connect(self, channel: str, websocket: WebSocket):
         """Connect websocket to channel"""
@@ -77,7 +77,7 @@ class OptimizedConnectionManager:
     async def broadcast(self, channel: str, message: dict):
         """Queue message for broadcasting"""
         try:
-            self._broadcast_queue.put_nowait((channel, message))
+            await self._broadcast_queue.put_nowait((channel, message))
         except asyncio.QueueFull:
             logger.warning("Broadcast queue full, dropping message")
 
@@ -88,4 +88,5 @@ class OptimizedConnectionManager:
             try:
                 await self._broadcast_task
             except asyncio.CancelledError:
-                pass
+                await self._cleanup_resources()
+                raise

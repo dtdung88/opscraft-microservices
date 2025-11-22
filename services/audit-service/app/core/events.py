@@ -67,13 +67,13 @@ class AuditEventConsumer:
                 flagged=risk_level in ['high', 'critical']
             )
             db.add(audit_log)
-            db.commit()
+            await db.commit()
             logger.info(f"Audit log created: {event.get('event_type')}")
         except Exception as e:
             logger.error(f"Failed to process audit event: {e}")
-            db.rollback()
+            await db.rollback()
         finally:
-            db.close()
+            await db.close()
 
     def _get_category(self, event_type: str) -> str:
         if not event_type:
@@ -104,7 +104,7 @@ class AuditEventConsumer:
     async def stop(self):
         self.running = False
         if self.consumer:
-            self.consumer.close()
+            await self.consumer.close()
         logger.info("Audit event consumer stopped")
 
 event_consumer = AuditEventConsumer()

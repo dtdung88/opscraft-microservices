@@ -13,6 +13,7 @@ from config import settings
 
 router = APIRouter()
 
+MSG_NOT_FOUND = "Script not found"
 
 @router.get("", response_model=List[ScriptResponse])
 async def list_scripts(
@@ -48,7 +49,7 @@ async def get_script(
     if not script:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Script not found"
+            detail=MSG_NOT_FOUND
         )
     return script
 
@@ -112,7 +113,7 @@ async def update_script(
     if not script:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Script not found"
+            detail=MSG_NOT_FOUND
         )
 
     if script_data.content:
@@ -165,7 +166,7 @@ async def delete_script(
     if not script:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Script not found"
+            detail=MSG_NOT_FOUND
         )
 
     script_name = script.name

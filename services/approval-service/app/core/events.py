@@ -13,7 +13,7 @@ class EventConsumer:
 
     async def start(self):
         self.running = True
-        asyncio.create_task(self._consume_events())
+        await asyncio.create_task(self._consume_events())
 
     async def _consume_events(self):
         try:
@@ -32,13 +32,13 @@ class EventConsumer:
             logger.error(f"Consumer error: {e}")
 
     async def _handle_event(self, event: dict):
-        event_type = event.get('event_type')
+        event_type = await event.get('event_type')
         logger.info(f"Received event: {event_type}")
 
     async def stop(self):
         self.running = False
         if self.consumer:
-            self.consumer.close()
+            await self.consumer.close()
 
 class EventPublisher:
     def __init__(self):
@@ -46,7 +46,7 @@ class EventPublisher:
 
     async def connect(self):
         try:
-            self.producer = KafkaProducer(
+            self.producer = await KafkaProducer(
                 bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8')
             )
@@ -57,11 +57,10 @@ class EventPublisher:
     async def publish(self, topic: str, event: dict):
         if self.producer:
             self.producer.send(topic, value=event)
-            self.producer.flush()
+            await self.producer.flush()
 
     async def disconnect(self):
         if self.producer:
-            self.producer.close()
-
+            await self.producer.close()
 event_consumer = EventConsumer()
 event_publisher = EventPublisher()

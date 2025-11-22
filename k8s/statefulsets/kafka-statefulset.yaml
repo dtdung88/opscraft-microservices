@@ -14,12 +14,23 @@ spec:
       labels:
         app: kafka
     spec:
+      securityContext:
+        runAsNonRoot: true # Pod-level: all containers must run as non-root
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: kafka
           image: confluentinc/cp-kafka:7.5.0
           ports:
             - containerPort: 9092
               name: kafka
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: KAFKA_BROKER_ID
               valueFrom:
