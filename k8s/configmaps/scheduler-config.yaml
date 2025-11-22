@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config
+  namespace: opscraft
+data:
+  SERVICE_NAME: "scheduler-service"
+  SERVICE_PORT: "8007"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  SCHEDULER_TIMEZONE: "UTC"
+  MAX_CONCURRENT_SCHEDULES: "100"

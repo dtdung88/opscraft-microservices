@@ -1,16 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: script-service
+  name: postgres
   namespace: opscraft
   labels:
-    app: script-service
+    app: postgres
 spec:
   type: ClusterIP
+  clusterIP: None
   ports:
-    - port: 8002
-      targetPort: 8002
+    - port: 5432
+      targetPort: 5432
       protocol: TCP
-      name: http
+      name: postgres
   selector:
-    app: script-service
+    app: postgres

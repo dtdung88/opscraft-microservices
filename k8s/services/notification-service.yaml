@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: script-service
+  name: notification-service
   namespace: opscraft
   labels:
-    app: script-service
+    app: notification-service
 spec:
   type: ClusterIP
   ports:
-    - port: 8002
-      targetPort: 8002
+    - port: 8005
+      targetPort: 8005
       protocol: TCP
       name: http
   selector:
-    app: script-service
+    app: notification-service

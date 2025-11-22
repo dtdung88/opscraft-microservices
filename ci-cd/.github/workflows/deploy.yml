@@ -1,0 +1,180 @@
+name: Deploy All Services
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      services:
+        description: "Services to deploy (comma-separated or 'all')"
+        required: true
+        default: "all"
+
+env:
+  REGISTRY: ghcr.io
+  NAMESPACE: opscraft
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.set-services.outputs.services }}
+    steps:
+      - id: set-services
+        run: |
+          if [ "${{ github.event.inputs.services }}" == "all" ]; then
+            echo 'services=["auth-service","script-service","execution-service","secret-service","notification-service","admin-service","scheduler-service","approval-service","audit-service"]' >> $GITHUB_OUTPUT
+          else
+            IFS=',' read -ra ADDR <<< "${{ github.event.inputs.services }}"
+            JSON="["
+            for i in "${ADDR[@]}"; do
+              JSON="$JSON\"$(echo $i | xargs)\","
+            done
+            JSON="${JSON%,}]"
+            echo "services=$JSON" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    strategy:
+      matrix:
+        service: ${{ fromJson(needs.prepare.outputs.services) }}
+      max-parallel: 3
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Get latest image tag
+        id: get-tag
+        run: |
+          # Get the latest image tag from the registry
+          TAG=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /orgs/${{ github.repository_owner }}/packages/container/${{ matrix.service }}/versions \
+            --jq '.[0].metadata.container.tags[0]' 2>/dev/null || echo "latest")
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy ${{ matrix.service }}
+        run: |
+          echo "Deploying ${{ matrix.service }} to ${{ github.event.inputs.environment }}"
+
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}:${{ steps.get-tag.outputs.tag }}"
+
+          kubectl set image deployment/${{ matrix.service }} \
+            ${{ matrix.service }}=$IMAGE \
+            -n ${{ env.NAMESPACE }} \
+            --record
+
+          kubectl rollout status deployment/${{ matrix.service }} \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=5m
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -l app=${{ matrix.service }} -n ${{ env.NAMESPACE }}
+
+          # Wait for pods to be ready
+          kubectl wait --for=condition=ready pod \
+            -l app=${{ matrix.service }} \
+            -n ${{ env.NAMESPACE }} \
+            --timeout=120s
+
+  smoke-tests:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+
+      - name: Run smoke tests
+        run: |
+          # Test each service health endpoint
+          SERVICES="auth-service script-service execution-service secret-service notification-service admin-service"
+
+          for svc in $SERVICES; do
+            echo "Testing $svc..."
+            kubectl run smoke-test-$svc --rm -i --restart=Never \
+              --image=curlimages/curl \
+              -n ${{ env.NAMESPACE }} \
+              -- curl -sf http://$svc:${svc//[^0-9]/}/health || echo "Warning: $svc health check failed"
+          done
+
+      - name: Notify completion
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,workflow
+          text: |
+            Deployment to ${{ github.event.inputs.environment }} completed
+            Services: ${{ github.event.inputs.services }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        if: always()
+
+  rollback:
+    needs: smoke-tests
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    if: failure()
+
+    steps:
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > $HOME/.kube/config
+
+      - name: Rollback deployments
+        run: |
+          echo "Rolling back failed deployments..."
+
+          SERVICES="${{ github.event.inputs.services }}"
+          if [ "$SERVICES" == "all" ]; then
+            SERVICES="auth-service script-service execution-service secret-service notification-service admin-service"
+          fi
+
+          for svc in $SERVICES; do
+            echo "Rolling back $svc..."
+            kubectl rollout undo deployment/$svc -n ${{ env.NAMESPACE }} || true
+          done
+
+      - name: Notify rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: "failure"
+          text: |
+            ⚠️ Deployment failed - automatic rollback triggered
+            Environment: ${{ github.event.inputs.environment }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

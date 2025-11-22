@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: script-config
+  namespace: opscraft
+data:
+  SERVICE_NAME: "script-service"
+  SERVICE_PORT: "8002"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  CORS_ORIGINS: '["https://opscraft.example.com"]'
+  KAFKA_TOPIC_SCRIPT_EVENTS: "script-events"

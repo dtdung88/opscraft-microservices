@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: script-service
+  name: audit-service
   namespace: opscraft
   labels:
-    app: script-service
+    app: audit-service
 spec:
   type: ClusterIP
   ports:
-    - port: 8002
-      targetPort: 8002
+    - port: 8009
+      targetPort: 8009
       protocol: TCP
       name: http
   selector:
-    app: script-service
+    app: audit-service

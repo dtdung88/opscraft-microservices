@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: script-service
+  name: scheduler-service
   namespace: opscraft
   labels:
-    app: script-service
+    app: scheduler-service
 spec:
   type: ClusterIP
   ports:
-    - port: 8002
-      targetPort: 8002
+    - port: 8007
+      targetPort: 8007
       protocol: TCP
       name: http
   selector:
-    app: script-service
+    app: scheduler-service

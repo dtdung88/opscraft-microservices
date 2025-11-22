@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: execution-config
+  namespace: opscraft
+data:
+  SERVICE_NAME: "execution-service"
+  SERVICE_PORT: "8003"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  MAX_CONCURRENT_EXECUTIONS: "10"
+  EXECUTION_TIMEOUT_SECONDS: "3600"
+  DOCKER_ENABLED: "true"
+  CONTAINER_MEMORY_LIMIT: "512m"
+  CONTAINER_CPU_QUOTA: "50000"
+  CONTAINER_CPU_PERIOD: "100000"
+  KAFKA_TOPIC_EXECUTION_EVENTS: "execution-events"

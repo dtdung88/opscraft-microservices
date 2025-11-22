@@ -1,0 +1,198 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-service
+  namespace: opscraft
+  labels:
+    app: execution-service
+    tier: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: execution-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: execution-service
+        tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8003"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: opscraft-execution-account
+      containers:
+        - name: execution-service
+          image: opscraft/execution-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8003
+              name: http
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: SERVICE_NAME
+              value: "execution-service"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: execution-database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: redis-url
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: celery-broker-url
+            - name: CELERY_RESULT_BACKEND
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: celery-result-backend
+            - name: SCRIPT_SERVICE_URL
+              value: "http://script-service:8002"
+            - name: SECRET_SERVICE_URL
+              value: "http://secret-service:8004"
+            - name: EXECUTION_TIMEOUT_SECONDS
+              value: "3600"
+            - name: MAX_CONCURRENT_EXECUTIONS
+              value: "10"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: execution-service
+                topologyKey: kubernetes.io/hostname
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: execution-worker
+  namespace: opscraft
+  labels:
+    app: execution-worker
+    tier: worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: execution-worker
+  template:
+    metadata:
+      labels:
+        app: execution-worker
+        tier: worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: opscraft-execution-account
+      containers:
+        - name: execution-worker
+          image: opscraft/execution-service:latest
+          imagePullPolicy: Always
+          command:
+            - celery
+            - -A
+            - app.workers.celery_worker:celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency=4
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: execution-database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: redis-url
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: celery-broker-url
+            - name: CELERY_RESULT_BACKEND
+              valueFrom:
+                secretKeyRef:
+                  name: opscraft-secrets
+                  key: celery-result-backend
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

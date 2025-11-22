@@ -1,16 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: script-service
+  name: kafka
   namespace: opscraft
   labels:
-    app: script-service
+    app: kafka
 spec:
   type: ClusterIP
+  clusterIP: None
   ports:
-    - port: 8002
-      targetPort: 8002
+    - port: 9092
+      targetPort: 9092
       protocol: TCP
-      name: http
+      name: kafka
   selector:
-    app: script-service
+    app: kafka

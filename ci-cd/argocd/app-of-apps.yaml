@@ -1,0 +1,177 @@
+---
+# App of Apps pattern for managing multiple services
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opscraft-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yourusername/opscraft-microservices
+    targetRevision: HEAD
+    path: ci-cd/argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Individual service applications
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opscraft-auth-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: opscraft
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yourusername/opscraft-microservices
+    targetRevision: HEAD
+    path: k8s/deployments
+    kustomize:
+      namePrefix: ""
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opscraft
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opscraft-script-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: opscraft
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yourusername/opscraft-microservices
+    targetRevision: HEAD
+    path: k8s/deployments
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opscraft
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opscraft-execution-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: opscraft
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yourusername/opscraft-microservices
+    targetRevision: HEAD
+    path: k8s/deployments
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opscraft
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opscraft-secret-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: opscraft
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yourusername/opscraft-microservices
+    targetRevision: HEAD
+    path: k8s/deployments
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opscraft
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opscraft-infrastructure
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: opscraft
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yourusername/opscraft-microservices
+    targetRevision: HEAD
+    path: k8s/statefulsets
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: opscraft
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# AppProject for OpsCraft
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: opscraft
+  namespace: argocd
+spec:
+  description: OpsCraft Microservices Project
+  sourceRepos:
+    - "https://github.com/yourusername/opscraft-microservices"
+    - "https://github.com/yourusername/*"
+  destinations:
+    - namespace: opscraft
+      server: https://kubernetes.default.svc
+    - namespace: opscraft-staging
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+  roles:
+    - name: developer
+      description: Developer access
+      policies:
+        - p, proj:opscraft:developer, applications, get, opscraft/*, allow
+        - p, proj:opscraft:developer, applications, sync, opscraft/*, allow
+      groups:
+        - developers
+    - name: admin
+      description: Admin access
+      policies:
+        - p, proj:opscraft:admin, applications, *, opscraft/*, allow
+      groups:
+        - admins

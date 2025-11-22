@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-config
+  namespace: opscraft
+data:
+  SERVICE_NAME: "audit-service"
+  SERVICE_PORT: "8009"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  RETENTION_DAYS: "365"
