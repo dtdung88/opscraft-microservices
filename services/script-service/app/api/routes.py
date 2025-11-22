@@ -9,11 +9,10 @@ from app.schemas.script import ScriptCreate, ScriptUpdate, ScriptResponse
 from app.services.script_service import ScriptService
 from app.core.validation import InputValidator
 from app.core.events import event_publisher
-from shared.events.event_schemas import (
-    ScriptCreatedEvent, ScriptUpdatedEvent, ScriptDeletedEvent
-)
+from config import settings
 
 router = APIRouter()
+
 
 @router.get("", response_model=List[ScriptResponse])
 async def list_scripts(
@@ -27,7 +26,6 @@ async def list_scripts(
 ):
     """List scripts with filtering"""
     script_service = ScriptService(db)
-    
     scripts = script_service.list_scripts(
         skip=skip,
         limit=limit,
@@ -35,8 +33,8 @@ async def list_scripts(
         script_type=script_type,
         status=status
     )
-    
     return scripts
+
 
 @router.get("/{script_id}", response_model=ScriptResponse)
 async def get_script(
@@ -47,14 +45,13 @@ async def get_script(
     """Get script by ID"""
     script_service = ScriptService(db)
     script = script_service.get_script(script_id)
-    
     if not script:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Script not found"
         )
-    
     return script
+
 
 @router.post("", response_model=ScriptResponse, status_code=status.HTTP_201_CREATED)
 async def create_script(
@@ -65,44 +62,40 @@ async def create_script(
     """Create new script"""
     user = request.state.user
     script_service = ScriptService(db)
-    
-    # Validate script content
+
     is_valid, errors = InputValidator.validate_script_content(
         script_data.content,
         script_data.script_type
     )
-    
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"errors": errors}
         )
-    
-    # Check for duplicate name
+
     if script_service.get_script_by_name(script_data.name):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Script with this name already exists"
         )
-    
-    # Create script
+
     script = script_service.create_script(script_data, user['username'])
-    
-    # Publish event
+
     await event_publisher.publish(
         "script-events",
-        ScriptCreatedEvent(
-            event_id=str(script.id),
-            service=settings.SERVICE_NAME,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            script_id=script.id,
-            script_name=script.name,
-            script_type=script.script_type,
-            created_by=user['username']
-        ).dict()
+        {
+            "event_type": "script.created",
+            "event_id": str(script.id),
+            "service": settings.SERVICE_NAME,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "script_id": script.id,
+            "script_name": script.name,
+            "script_type": script.script_type.value if hasattr(script.script_type, 'value') else script.script_type,
+            "created_by": user['username']
+        }
     )
-    
     return script
+
 
 @router.put("/{script_id}", response_model=ScriptResponse)
 async def update_script(
@@ -114,48 +107,49 @@ async def update_script(
     """Update script"""
     user = request.state.user
     script_service = ScriptService(db)
-    
+
     script = script_service.get_script(script_id)
     if not script:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Script not found"
         )
-    
-    # Validate content if provided
+
     if script_data.content:
+        script_type = script_data.script_type or script.script_type
+        if hasattr(script_type, 'value'):
+            script_type = script_type.value
         is_valid, errors = InputValidator.validate_script_content(
             script_data.content,
-            script_data.script_type or script.script_type
+            script_type
         )
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"errors": errors}
             )
-    
-    # Update script
+
     updated_script = script_service.update_script(
         script_id,
         script_data,
         user['username']
     )
-    
-    # Publish event
+
     await event_publisher.publish(
         "script-events",
-        ScriptUpdatedEvent(
-            event_id=str(script.id),
-            service=settings.SERVICE_NAME,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            script_id=script.id,
-            script_name=script.name,
-            updated_by=user['username'],
-            changes=script_data.dict(exclude_unset=True)
-        ).dict()
+        {
+            "event_type": "script.updated",
+            "event_id": str(script.id),
+            "service": settings.SERVICE_NAME,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "script_id": script.id,
+            "script_name": script.name,
+            "updated_by": user['username'],
+            "changes": script_data.dict(exclude_unset=True)
+        }
     )
-    
     return updated_script
+
 
 @router.delete("/{script_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_script(
@@ -166,28 +160,27 @@ async def delete_script(
     """Delete script"""
     user = request.state.user
     script_service = ScriptService(db)
-    
+
     script = script_service.get_script(script_id)
     if not script:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Script not found"
         )
-    
+
     script_name = script.name
     script_service.delete_script(script_id)
-    
-    # Publish event
+
     await event_publisher.publish(
         "script-events",
-        ScriptDeletedEvent(
-            event_id=str(script_id),
-            service=settings.SERVICE_NAME,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            script_id=script_id,
-            script_name=script_name,
-            deleted_by=user['username']
-        ).dict()
+        {
+            "event_type": "script.deleted",
+            "event_id": str(script_id),
+            "service": settings.SERVICE_NAME,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "script_id": script_id,
+            "script_name": script_name,
+            "deleted_by": user['username']
+        }
     )
-    
     return None

@@ -1,0 +1,205 @@
+version: "3.8"
+
+networks:
+  opscraft-network:
+    driver: bridge
+
+volumes:
+  postgres-auth:
+  postgres-script:
+  postgres-execution:
+  postgres-secret:
+  postgres-scheduler:
+  postgres-approval:
+  postgres-audit:
+  redis-data:
+  kafka-data:
+  zookeeper-data:
+
+services:
+  # Infrastructure - Production settings
+  auth-db:
+    image: postgres:15-alpine
+    container_name: auth-db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-auth:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  script-db:
+    image: postgres:15-alpine
+    container_name: script-db
+    environment:
+      POSTGRES_DB: script_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-script:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  execution-db:
+    image: postgres:15-alpine
+    container_name: execution-db
+    environment:
+      POSTGRES_DB: execution_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-execution:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  secret-db:
+    image: postgres:15-alpine
+    container_name: secret-db
+    environment:
+      POSTGRES_DB: secret_db
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres-secret:/var/lib/postgresql/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: opscraft-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    networks:
+      - opscraft-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Core Services - Production
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@auth-db:5432/auth_db
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SECRET_KEY: ${SECRET_KEY}
+    depends_on:
+      auth-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opscraft-network
+    restart: always
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+
+  script-service:
+    build:
+      context: ./services/script-service
+      dockerfile: Dockerfile
+    container_name: script-service
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@script-db:5432/script_db
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AUTH_SERVICE_URL: http://auth-service:8001
+    depends_on:
+      script-db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - opscraft-network
+    restart: always
+
+  execution-service:
+    build:
+      context: ./services/execution-service
+      dockerfile: Dockerfile
+    container_name: execution-service
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@execution-db:5432/execution_db
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/5
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/5
+    depends_on:
+      execution-db:
+        condition: service_healthy
+    networks:
+      - opscraft-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
+
+  secret-service:
+    build:
+      context: ./services/secret-service
+      dockerfile: Dockerfile
+    container_name: secret-service
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@secret-db:5432/secret_db
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/3
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    depends_on:
+      secret-db:
+        condition: service_healthy
+    networks:
+      - opscraft-network
+    restart: always
+
+  # API Gateway - Production
+  api-gateway:
+    image: nginx:alpine
+    container_name: api-gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./gateway/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - auth-service
+      - script-service
+      - execution-service
+      - secret-service
+    networks:
+      - opscraft-network
+    restart: always

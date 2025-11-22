@@ -1,54 +1,40 @@
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import gzip
-import json
 from typing import Callable
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class PerformanceMiddleware(BaseHTTPMiddleware):
     """Performance optimization middleware"""
-    
-    async def dispatch(self, request: Request, call_next: Callable):
-        # Enable response compression
-        response = await call_next(request)
-        
-        # Compress responses > 1KB
-        if (
-            'gzip' in request.headers.get('accept-encoding', '') and
-            int(response.headers.get('content-length', 0)) > 1024
-        ):
-            body = b''
-            async for chunk in response.body_iterator:
-                body += chunk
-            
-            compressed = gzip.compress(body)
-            
-            return Response(
-                content=compressed,
-                status_code=response.status_code,
-                headers={
-                    **dict(response.headers),
-                    'content-encoding': 'gzip',
-                    'content-length': str(len(compressed))
-                }
-            )
-        
-        return response
 
-# Batch API endpoint
-@router.post("/batch")
-async def batch_operations(
-    operations: List[BatchOperation],
-    db: Session = Depends(get_db)
-):
-    """Execute multiple operations in a single request"""
-    results = []
-    
-    async with db.begin():
-        for op in operations:
+    async def dispatch(self, request: Request, call_next: Callable):
+        response = await call_next(request)
+
+        accept_encoding = request.headers.get('accept-encoding', '')
+        content_length = response.headers.get('content-length', '0')
+
+        if 'gzip' in accept_encoding and int(content_length) > 1024:
             try:
-                result = await execute_operation(op, db)
-                results.append({"success": True, "data": result})
+                body = b''
+                async for chunk in response.body_iterator:
+                    body += chunk
+
+                compressed = gzip.compress(body)
+
+                return Response(
+                    content=compressed,
+                    status_code=response.status_code,
+                    headers={
+                        **dict(response.headers),
+                        'content-encoding': 'gzip',
+                        'content-length': str(len(compressed))
+                    },
+                    media_type=response.media_type
+                )
             except Exception as e:
-                results.append({"success": False, "error": str(e)})
-    
-    return {"results": results}
+                logger.error(f"Compression failed: {e}")
+
+        return response

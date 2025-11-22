@@ -4,6 +4,7 @@ from typing import List
 from datetime import datetime, timezone
 from apscheduler.triggers.cron import CronTrigger
 import httpx
+import logging
 
 from app.db.session import get_db
 from app.models.schedule import Schedule
@@ -12,36 +13,37 @@ from app.services.scheduler_service import SchedulerService
 from config import settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
 
 async def execute_scheduled_script(schedule_id: int):
     """Execute a scheduled script"""
-    db = next(get_db())
-    schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
-    
-    if not schedule or not schedule.is_active:
-        return
-    
-    # Trigger execution via Execution Service
-    async with httpx.AsyncClient() as client:
-        try:
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        schedule = db.query(Schedule).filter(Schedule.id == schedule_id).first()
+        if not schedule or not schedule.is_active:
+            return
+
+        async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{settings.EXECUTION_SERVICE_URL}/api/v1/executions",
                 json={
                     "script_id": schedule.script_id,
-                    "parameters": schedule.parameters
+                    "parameters": schedule.parameters or {}
                 },
                 headers={"X-Scheduled": "true"},
                 timeout=30.0
             )
-            
             if response.status_code == 201:
                 schedule.last_run = datetime.now(timezone.utc)
                 schedule.run_count += 1
                 db.commit()
-        except Exception as e:
-            logger.error(f"Failed to execute schedule {schedule_id}: {e}")
-    
-    db.close()
+    except Exception as e:
+        logger.error(f"Failed to execute schedule {schedule_id}: {e}")
+    finally:
+        db.close()
+
 
 @router.get("", response_model=List[ScheduleResponse])
 async def list_schedules(
@@ -53,18 +55,18 @@ async def list_schedules(
     service = SchedulerService(db)
     return service.list_schedules(skip, limit, active_only)
 
+
 @router.get("/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(schedule_id: int, db: Session = Depends(get_db)):
     service = SchedulerService(db)
     schedule = service.get_schedule(schedule_id)
-    
     if not schedule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Schedule not found"
         )
-    
     return schedule
+
 
 @router.post("", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
 async def create_schedule(
@@ -74,14 +76,10 @@ async def create_schedule(
 ):
     user = request.state.user
     service = SchedulerService(db)
-    
-    # Create schedule in database
     schedule = service.create_schedule(schedule_data, user['username'])
-    
-    # Add job to scheduler
+
     scheduler = request.app.state.scheduler
     trigger = CronTrigger.from_crontab(schedule.cron_expression)
-    
     scheduler.add_job(
         execute_scheduled_script,
         trigger=trigger,
@@ -89,8 +87,8 @@ async def create_schedule(
         args=[schedule.id],
         replace_existing=True
     )
-    
     return schedule
+
 
 @router.put("/{schedule_id}", response_model=ScheduleResponse)
 async def update_schedule(
@@ -101,17 +99,14 @@ async def update_schedule(
 ):
     service = SchedulerService(db)
     schedule = service.update_schedule(schedule_id, schedule_data)
-    
     if not schedule:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Schedule not found"
         )
-    
-    # Update scheduler job
+
     scheduler = request.app.state.scheduler
     job_id = f"schedule_{schedule.id}"
-    
     if schedule.is_active:
         trigger = CronTrigger.from_crontab(schedule.cron_expression)
         scheduler.add_job(
@@ -122,9 +117,12 @@ async def update_schedule(
             replace_existing=True
         )
     else:
-        scheduler.remove_job(job_id)
-    
+        try:
+            scheduler.remove_job(job_id)
+        except Exception:
+            pass
     return schedule
+
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_schedule(
@@ -134,15 +132,14 @@ async def delete_schedule(
 ):
     service = SchedulerService(db)
     service.delete_schedule(schedule_id)
-    
-    # Remove from scheduler
+
     scheduler = request.app.state.scheduler
     try:
         scheduler.remove_job(f"schedule_{schedule_id}")
-    except:
+    except Exception:
         pass
-    
     return None
+
 
 @router.post("/{schedule_id}/trigger")
 async def trigger_schedule_now(

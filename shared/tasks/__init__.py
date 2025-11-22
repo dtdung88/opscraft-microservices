@@ -1,0 +1,1 @@
+from shared.tasks.celery_config import create_optimized_celery
