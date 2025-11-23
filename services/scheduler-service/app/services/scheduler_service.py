@@ -1,86 +1,89 @@
-from sqlalchemy.orm import Session
-from typing import List, Optional
 from datetime import datetime, timezone
+from typing import Optional
+
 from croniter import croniter
+from sqlalchemy.orm import Session
 
 from app.models.schedule import Schedule
 from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
+from shared.exceptions.custom_exceptions import ValidationError
+from shared.services.base_service import AuditedService
+from shared.validation.validators import InputValidator
 
-class SchedulerService:
+
+class SchedulerService(AuditedService):
+    """Schedule management service"""
+
     def __init__(self, db: Session):
-        self.db = db
-    
-    def list_schedules(
-        self,
-        skip: int = 0,
-        limit: int = 100,
-        active_only: bool = True
-    ) -> List[Schedule]:
-        query = self.db.query(Schedule)
-        
-        if active_only:
-            query = query.filter(Schedule.is_active == True)
-        
-        return query.offset(skip).limit(limit).all()
-    
-    def get_schedule(self, schedule_id: int) -> Optional[Schedule]:
-        return self.db.query(Schedule).filter(Schedule.id == schedule_id).first()
-    
+        super().__init__(db, Schedule, "schedule")
+
+    def _validate_create(self, data: dict) -> None:
+        """Validate schedule creation"""
+        # Validate name
+        name = data.get("name", "")
+        if not name or len(name) > 255:
+            raise ValidationError(
+                "Invalid schedule name",
+                [
+                    {
+                        "field": "name",
+                        "message": "Name is required and must be < 255 chars",
+                    }
+                ],
+            )
+
+        # Check for duplicates
+        if self.exists(name=name, is_active=True):
+            raise ValidationError(
+                "Schedule already exists",
+                [{"field": "name", "message": f"Schedule '{name}' already exists"}],
+            )
+
+        # Validate cron expression
+        cron_result = InputValidator.validate_cron_expression(
+            data.get("cron_expression", "")
+        )
+        if not cron_result:
+            raise ValidationError(
+                "Invalid cron expression",
+                [{"field": "cron_expression", "message": cron_result.message}],
+            )
+
     def create_schedule(
-        self,
-        schedule_data: ScheduleCreate,
-        username: str
+        self, schedule_data: ScheduleCreate, created_by: str
     ) -> Schedule:
+        """Create new schedule"""
         # Calculate next run time
         cron = croniter(schedule_data.cron_expression, datetime.now(timezone.utc))
         next_run = cron.get_next(datetime)
-        
-        schedule = Schedule(
-            name=schedule_data.name,
-            description=schedule_data.description,
-            script_id=schedule_data.script_id,
-            cron_expression=schedule_data.cron_expression,
-            parameters=schedule_data.parameters,
-            timezone=schedule_data.timezone,
-            max_retries=schedule_data.max_retries,
-            retry_delay_seconds=schedule_data.retry_delay_seconds,
-            next_run=next_run,
-            created_by=username
-        )
-        
-        self.db.add(schedule)
+
+        # Prepare data
+        data = schedule_data.dict()
+        data["created_by"] = created_by
+        data["next_run"] = next_run
+
+        return self.create(data)
+
+    def update_schedule_status(self, schedule_id: int, is_active: bool) -> Schedule:
+        """Enable/disable schedule"""
+        schedule = self.get_or_404(schedule_id)
+        schedule.is_active = is_active
         self.db.commit()
-        self.db.refresh(schedule)
-        
         return schedule
-    
-    def update_schedule(
-        self,
-        schedule_id: int,
-        schedule_data: ScheduleUpdate
-    ) -> Optional[Schedule]:
-        schedule = self.get_schedule(schedule_id)
-        
-        if not schedule:
-            return None
-        
-        update_dict = schedule_data.dict(exclude_unset=True)
-        
-        for key, value in update_dict.items():
-            setattr(schedule, key, value)
-        
-        # Recalculate next run if cron changed
-        if 'cron_expression' in update_dict:
-            cron = croniter(schedule.cron_expression, datetime.now(timezone.utc))
+
+    def record_execution(self, schedule_id: int, success: bool) -> Schedule:
+        """Record schedule execution"""
+        schedule = self.get_or_404(schedule_id)
+
+        with self.transaction():
+            schedule.last_run = datetime.now(timezone.utc)
+            schedule.run_count += 1
+
+            # Calculate next run
+            cron = croniter(schedule.cron_expression, schedule.last_run)
             schedule.next_run = cron.get_next(datetime)
-        
-        self.db.commit()
-        self.db.refresh(schedule)
-        
-        return schedule
-    
-    def delete_schedule(self, schedule_id: int):
-        schedule = self.get_schedule(schedule_id)
-        if schedule:
-            self.db.delete(schedule)
-            self.db.commit()
+
+            self.db.flush()
+            self.db.refresh(schedule)
+
+            return schedule

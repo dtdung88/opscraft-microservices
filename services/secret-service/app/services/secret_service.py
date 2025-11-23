@@ -1,112 +1,116 @@
-from sqlalchemy.orm import Session
-from typing import List, Optional
 from datetime import datetime, timezone
+from typing import List, Optional
 
+from sqlalchemy.orm import Session
+
+from app.models.audit import AuditAction, AuditLog
 from app.models.secret import Secret
-from app.models.audit import AuditLog, AuditAction
-from app.schemas.secret import SecretCreate, SecretUpdate, SecretResponse
-from app.core.encryption import EncryptionService
+from app.schemas.secret import SecretCreate, SecretUpdate
+from shared.exceptions.custom_exceptions import ValidationError
+from shared.security.secrets import secrets_manager
+from shared.services.base_service import AuditedService
+from shared.validation.validators import InputSanitizer, InputValidator
 
-class SecretService:
-    def __init__(self, db: Session, encryption_service: EncryptionService):
-        self.db = db
-        self.encryption = encryption_service
-    
-    def list_secrets(self, skip: int = 0, limit: int = 100) -> List[Secret]:
-        return self.db.query(Secret).filter(
-            Secret.is_active == True
-        ).offset(skip).limit(limit).all()
-    
-    def get_secret(self, secret_id: int, reveal: bool = False, user: str = None) -> Optional[SecretResponse]:
-        secret = self.db.query(Secret).filter(
-            Secret.id == secret_id,
-            Secret.is_active == True
-        ).first()
-        
-        if not secret:
-            return None
-        
-        response = SecretResponse.from_orm(secret)
-        
-        if reveal:
-            # Decrypt value
-            response.value = self.encryption.decrypt(secret.encrypted_value)
-            
-            # Log access
-            self._log_audit(secret_id, AuditAction.ACCESS, user or "unknown")
-            
-            # Update last accessed
-            secret.last_accessed_at = datetime.now(timezone.utc)
-            self.db.commit()
-        
-        return response
-    
-    def create_secret(self, secret_data: SecretCreate, user: str) -> Secret:
+
+class SecretService(AuditedService):
+    """Secret management service with encryption"""
+
+    def __init__(self, db: Session):
+        super().__init__(db, Secret, "secret")
+
+    def _validate_create(self, data: dict) -> None:
+        """Validate secret creation"""
+        # Validate name
+        name = data.get("name", "")
+        if not name or len(name) > 255:
+            raise ValidationError(
+                "Invalid secret name",
+                [
+                    {
+                        "field": "name",
+                        "message": "Name is required and must be < 255 chars",
+                    }
+                ],
+            )
+
+        # Check for duplicates
+        if self.exists(name=name, is_active=True):
+            raise ValidationError(
+                "Secret already exists",
+                [{"field": "name", "message": f"Secret '{name}' already exists"}],
+            )
+
+        # Sanitize inputs
+        data["name"] = InputSanitizer.sanitize_html(name)
+        if data.get("description"):
+            data["description"] = InputSanitizer.sanitize_html(data["description"])
+
+    def create_secret(self, secret_data: SecretCreate, created_by: str) -> Secret:
+        """Create secret with encryption"""
         # Encrypt value
-        encrypted_value = self.encryption.encrypt(secret_data.value)
-        
-        secret = Secret(
-            name=secret_data.name,
-            description=secret_data.description,
-            encrypted_value=encrypted_value,
-            category=secret_data.category,
-            created_by=user,
-            updated_by=user
-        )
-        
-        self.db.add(secret)
-        self.db.commit()
-        self.db.refresh(secret)
-        
+        encrypted_value = secrets_manager.encrypt(secret_data.value)
+
+        # Prepare data
+        data = secret_data.dict(exclude={"value"})
+        data["encrypted_value"] = encrypted_value
+        data["created_by"] = created_by
+        data["updated_by"] = created_by
+
+        # Create secret
+        secret = self.create(data)
+
         # Log creation
-        self._log_audit(secret.id, AuditAction.CREATE, user)
-        
+        self._log_audit_event(secret.id, AuditAction.CREATE, created_by)
+
         return secret
-    
-    def update_secret(self, secret_id: int, secret_data: SecretUpdate, user: str) -> Optional[Secret]:
-        secret = self.db.query(Secret).filter(Secret.id == secret_id).first()
-        
-        if not secret:
-            return None
-        
-        update_dict = secret_data.dict(exclude_unset=True)
-        
-        if 'value' in update_dict:
-            update_dict['encrypted_value'] = self.encryption.encrypt(update_dict.pop('value'))
-        
-        for key, value in update_dict.items():
-            setattr(secret, key, value)
-        
-        secret.updated_by = user
+
+    def get_secret_value(self, secret_id: int, accessed_by: str) -> str:
+        """Get decrypted secret value"""
+        secret = self.get_or_404(secret_id)
+
+        # Decrypt value
+        decrypted = secrets_manager.decrypt(secret.encrypted_value)
+
+        # Update last accessed
+        secret.last_accessed_at = datetime.now(timezone.utc)
         self.db.commit()
-        self.db.refresh(secret)
-        
+
+        # Log access
+        self._log_audit_event(secret_id, AuditAction.ACCESS, accessed_by)
+
+        return decrypted
+
+    def update_secret_value(
+        self, secret_id: int, new_value: str, updated_by: str
+    ) -> Secret:
+        """Update secret value"""
+        secret = self.get_or_404(secret_id)
+
+        # Encrypt new value
+        encrypted_value = secrets_manager.encrypt(new_value)
+
+        # Update
+        secret.encrypted_value = encrypted_value
+        secret.updated_by = updated_by
+        self.db.commit()
+
         # Log update
-        self._log_audit(secret_id, AuditAction.UPDATE, user)
-        
+        self._log_audit_event(secret_id, AuditAction.UPDATE, updated_by)
+
         return secret
-    
-    def delete_secret(self, secret_id: int, user: str):
-        secret = self.db.query(Secret).filter(Secret.id == secret_id).first()
-        
-        if secret:
-            secret.is_active = False
-            secret.updated_by = user
-            self.db.commit()
-            
-            # Log deletion
-            self._log_audit(secret_id, AuditAction.DELETE, user)
-    
-    def get_audit_logs(self, secret_id: int) -> List[AuditLog]:
-        return self.db.query(AuditLog).filter(
-            AuditLog.secret_id == secret_id
-        ).order_by(AuditLog.timestamp.desc()).all()
-    
-    def _log_audit(self, secret_id: int, action: AuditAction, user: str):
-        log = AuditLog(
-            secret_id=secret_id,
-            action=action,
-            user=user
-        )
-        self.db.add(log)
+
+    def _log_audit_event(self, secret_id: int, action: AuditAction, user: str) -> None:
+        """Log audit event"""
+        audit = AuditLog(secret_id=secret_id, action=action, user=user)
+        self.db.add(audit)
         self.db.commit()
+
+    def get_audit_logs(self, secret_id: int, limit: int = 100) -> List[AuditLog]:
+        """Get audit logs for secret"""
+        return (
+            self.db.query(AuditLog)
+            .filter(AuditLog.secret_id == secret_id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
