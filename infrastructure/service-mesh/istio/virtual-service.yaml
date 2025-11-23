@@ -1,0 +1,85 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: opscraft-routing
+  namespace: opscraft
+spec:
+  hosts:
+    - "api.opscraft.example.com"
+  gateways:
+    - opscraft-gateway
+  http:
+    # Auth Service
+    - match:
+        - uri:
+            prefix: /api/v1/auth
+      route:
+        - destination:
+            host: auth-service
+            port:
+              number: 8001
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: connect-failure,refused-stream,unavailable,cancelled,resource-exhausted
+
+    # Script Service
+    - match:
+        - uri:
+            prefix: /api/v1/scripts
+      route:
+        - destination:
+            host: script-service
+            port:
+              number: 8002
+      timeout: 60s
+      retries:
+        attempts: 3
+        perTryTimeout: 20s
+
+    # Execution Service
+    - match:
+        - uri:
+            prefix: /api/v1/executions
+      route:
+        - destination:
+            host: execution-service
+            port:
+              number: 8003
+      timeout: 300s
+
+    # Secret Service
+    - match:
+        - uri:
+            prefix: /api/v1/secrets
+      route:
+        - destination:
+            host: secret-service
+            port:
+              number: 8004
+      timeout: 30s
+      retries:
+        attempts: 2
+        perTryTimeout: 15s
+
+    # Admin Service
+    - match:
+        - uri:
+            prefix: /api/v1/admin
+      route:
+        - destination:
+            host: admin-service
+            port:
+              number: 8006
+      timeout: 60s
+
+    # Health check endpoint
+    - match:
+        - uri:
+            exact: /health
+      route:
+        - destination:
+            host: api-gateway
+            port:
+              number: 80

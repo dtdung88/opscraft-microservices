@@ -1,0 +1,55 @@
+# Jaeger Tracing Configuration for OpsCraft
+
+# Collector configuration
+collector:
+  queue-size: 2000
+  num-workers: 50
+  http-server:
+    host-port: ":14268"
+  grpc-server:
+    host-port: ":14250"
+  zipkin:
+    host-port: ":9411"
+
+# Agent configuration
+agent:
+  http-server:
+    host-port: ":5778"
+  processor:
+    jaeger-compact:
+      server-host-port: ":6831"
+    jaeger-binary:
+      server-host-port: ":6832"
+    zipkin-compact:
+      server-host-port: ":5775"
+
+# Query configuration
+query:
+  base-path: /
+  host-port: ":16686"
+  static-files: ""
+
+# Storage configuration
+storage:
+  type: elasticsearch
+  elasticsearch:
+    server-urls: http://elasticsearch:9200
+    index-prefix: jaeger
+    tags-as-fields:
+      all: true
+    num-shards: 5
+    num-replicas: 1
+    bulk:
+      size: 5000000
+      workers: 1
+      actions: 1000
+      flush-interval: 200ms
+
+# Sampling configuration
+sampling:
+  strategies-file: /etc/jaeger/sampling_strategies.json
+
+# Downsampling (for production)
+downsampling:
+  ratio: 1.0
+  hashsalt: ""

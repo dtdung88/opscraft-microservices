@@ -1,0 +1,56 @@
+# Elasticsearch Configuration for OpsCraft
+
+cluster.name: opscraft-cluster
+node.name: ${HOSTNAME}
+
+# Paths
+path.data: /usr/share/elasticsearch/data
+path.logs: /usr/share/elasticsearch/logs
+
+# Network
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Discovery
+discovery.type: single-node
+# For multi-node clusters:
+# discovery.seed_hosts: ["es-node-1", "es-node-2", "es-node-3"]
+# cluster.initial_master_nodes: ["es-node-1", "es-node-2", "es-node-3"]
+
+# Security (X-Pack)
+xpack.security.enabled: false
+xpack.security.enrollment.enabled: false
+# For production, enable security:
+# xpack.security.enabled: true
+# xpack.security.transport.ssl.enabled: true
+
+# Memory
+bootstrap.memory_lock: true
+
+# Index Settings
+action.destructive_requires_name: true
+action.auto_create_index: true
+
+# Thread Pool
+thread_pool.write.queue_size: 1000
+thread_pool.search.queue_size: 1000
+
+# Indices
+indices.memory.index_buffer_size: 20%
+indices.queries.cache.size: 15%
+indices.fielddata.cache.size: 15%
+
+# HTTP
+http.max_content_length: 100mb
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+http.cors.allow-headers: "X-Requested-With,Content-Type,Content-Length,Authorization"
+
+# Logging
+logger.level: INFO
+logger.org.elasticsearch.transport: INFO
+logger.org.elasticsearch.discovery: INFO
+
+# Index Lifecycle Management
+xpack.ilm.enabled: true

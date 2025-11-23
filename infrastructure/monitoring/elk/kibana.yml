@@ -1,0 +1,38 @@
+# Kibana Configuration for OpsCraft
+
+server.port: 5601
+server.host: "0.0.0.0"
+server.name: "opscraft-kibana"
+
+# Elasticsearch connection
+elasticsearch.hosts: ["http://elasticsearch:9200"]
+elasticsearch.username: "kibana_system"
+elasticsearch.password: "${KIBANA_PASSWORD}"
+
+# Security
+# xpack.security.enabled: true
+# xpack.encryptedSavedObjects.encryptionKey: "your-32-character-encryption-key"
+
+# Logging
+logging.appenders.default:
+  type: console
+  layout:
+    type: json
+
+logging.root:
+  level: info
+  appenders: [default]
+
+# Monitoring
+monitoring.ui.enabled: true
+monitoring.ui.container.elasticsearch.enabled: true
+
+# Saved Objects
+savedObjects.maxImportExportSize: 10000
+
+# UI Settings
+uiSettings.overrides:
+  defaultRoute: /app/discover
+
+# Index Patterns
+xpack.reporting.enabled: true
